@@ -3,14 +3,20 @@
 #include <thread>
 #include <time.h>
 #include <vector>
+#include <mutex>
 
 using namespace std;
+
+mutex datalocker;
 
 struct clr { float r, g, b; };
 
 bool needrefresh = false;
 bool exitcall = false;
 bool canwork = false;
+bool cleanupcall = false;
+
+int bsr = 0;
 
 float ballsides = 8;
 
@@ -197,12 +203,19 @@ void cb_display()
 		glVertex2f(cwrld.xmin, 0);
 		glEnd();
 
+		bsr = bubbles.size();
 		if (bubbles.size() > 0)
 		{
+			datalocker.lock();
 			for (int i = 0; i < bubbles.size(); i++)
 			{
-				drawcircle(bubbles[i].getbx(), bubbles[i].getby(), bubbles[i].getbr(), bubbles[i].getbclr());
+				if (bsr == bubbles.size())
+				{
+					drawcircle(bubbles[i].getbx(), bubbles[i].getby(), bubbles[i].getbr(), bubbles[i].getbclr());
+				}
+				else break;
 			}
+			datalocker.unlock();
 		}
 	}
 
@@ -237,12 +250,28 @@ void logicthread()
 		{
 			if (bubbles.size() > 0)
 			{
+				datalocker.lock();
 				for (int i = 0; i < bubbles.size(); i++)
 				{
 					bubbles[i].move();
 				}
+				datalocker.unlock();
 			}
 			needrefresh = true;
+		}
+
+		if (cleanupcall)
+		{
+			cleanupcall = false;
+			canwork = false;
+			datalocker.lock();
+			for (int i = 0; i < bubbles.size(); i++)
+			{
+				bubbles[i].~bubble();
+			}
+			bubbles.clear();
+			datalocker.unlock();
+			canwork = true;
 		}
 	}
 }
@@ -258,7 +287,9 @@ void spawnbubble()
 	clr col = { float(rand() % 256) / 256,
 				float(rand() % 256) / 256,
 				float(rand() % 256) / 256 };
+	datalocker.lock();
 	bubbles.push_back(bubble(bpx, bpy, r, col, bbspd));
+	datalocker.unlock();
 }
 
 int main(int argc, char **argv)
@@ -289,13 +320,7 @@ int main(int argc, char **argv)
 
 		if (c == 2)
 		{
-			canwork = false;
-			for (int i = 0; i < bubbles.size(); i++)
-			{
-				bubbles[i].~bubble();
-			}
-			bubbles.clear();
-			canwork = true;
+			cleanupcall = true;
 		}
 
 		if (c == 4)
